@@ -5,9 +5,9 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST(req: NextRequest) {
   try {
-    const { cv, course, salMin, salMax, courseSkills } = await req.json()
+    const { cv, course, salMin, salMax, courseSkills } = await req.jso()
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash''})
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash'})
 
     const txt = cv.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 2500)
     const sal = `SGD ${parseInt(salMin).toLocaleString()} to ${parseInt(salMax).toLocaleString()} per month`

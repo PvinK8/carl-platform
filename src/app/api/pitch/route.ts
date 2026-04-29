@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const { cv, course, courseLabel, salMin, salMax } = await req.json()
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash''})
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash'})
 
     const txt = cv.replace(/[^\x20-\x7E\n]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 1500)
     const sal = `SGD ${parseInt(salMin).toLocaleString()} to ${parseInt(salMax).toLocaleString()} per month`

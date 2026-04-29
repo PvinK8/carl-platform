@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST(req: NextRequest) {
   try {
-    const { cv, course, salMin, salMax, courseSkills } = await req.jso()
+    const { cv, course, salMin, salMax, courseSkills } = await req.json()
 
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash'})
 

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const COURSE_TITLES: Record<string, string> = {
   PDDS:   'Professional Diploma in Data Science',
@@ -142,16 +141,21 @@ Return ONLY valid JSON. No markdown, no backticks, no preamble.
 
 Rules: verdictColor must match verdict tier. greenFlags and redFlags: 3-5 items each, specific to this candidate. talkingPoints: 5-6 items. domainRoles tier must be exactly best/good/stretch lowercase. Return ONLY the JSON.`;
 
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-001' });
-    const aiResult = await model.generateContent(prompt);
-    const rawText = aiResult.response.text().trim();
-    const cleaned = rawText
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
-    const parsed = JSON.parse(cleaned);
+                const geminiRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+                      { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) }
+                                  );
+                                      if (!geminiRes.ok) throw new Error(`Gemini error: ${await geminiRes.text()}`);
+                                          const geminiData = await geminiRes.json();
+                                              const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+
+            const cleaned = rawText
+                  .replace(/^```json\s*/i, '')
+                        .replace(/^```\s*/i, '')
+                              .replace(/\s*```$/i, '')
+                                    .trim();
+                                    t parsed = JSON.parse(cleaned);
     const required = [
       'overallScore','verdict','verdictColor','counsellorSummary',
       'domainRoles','domainEdge','salaryGap',

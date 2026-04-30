@@ -142,7 +142,7 @@ Return ONLY valid JSON. No markdown, no backticks, no preamble.
 
 Rules: verdictColor must match verdict tier. greenFlags and redFlags: 3-5 items each, specific to this candidate. talkingPoints: 5-6 items. domainRoles tier must be exactly best/good/stretch lowercase. Return ONLY the JSON.`;
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!, { apiVersion: 'v1' } as any);
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const aiResult = await model.generateContent(prompt);
     const rawText = aiResult.response.text().trim();

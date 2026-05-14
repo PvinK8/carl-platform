@@ -72,18 +72,21 @@ export async function POST(req: NextRequest) {
     ];
     const prompt = promptParts.join('\n');
 
-    const apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + process.env.GEMINI_API_KEY;
-    const geminiRes = await fetch(apiUrl, {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+      }),
     });
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      throw new Error('Gemini error ' + geminiRes.status + ': ' + errText);
-    }
-    const geminiData = await geminiRes.json();
-    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+    if (!res.ok) throw new Error('OpenAI error ' + res.status + ': ' + await res.text());
+    const data = await res.json();
+    const rawText = data.choices?.[0]?.message?.content?.trim() ?? '';
     const cleaned = rawText
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')

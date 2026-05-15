@@ -32,23 +32,22 @@ const labelStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.6)', marginBottom: '0.4rem', letterSpacing: '0.01em',
 };
 
-interface Job {
-  uuid?: string; title?: string;
-  postedCompany?: { name?: string };
-  salary?: { minimum?: number; maximum?: number };
-  description?: string;
-  applyUrl?: string; externalApplyUrl?: string;
-  fitScore: number; fitReason: string;
-  apolloContact?: { name: string; title: string; email: string; linkedin: string } | null;
+interface Role {
+  title: string;
+  why: string;
+  orgTypes: string;
+  mcfKeyword: string;
+  mcfUrl: string;
+  fitScore: number;
 }
 
 interface Result {
-  keywords: string[];
-  jobs: Job[];
+  roles: Role[];
   top5Indices: number[];
   candidateName: string;
   courseTitle: string;
   courseSkills: string;
+  apolloContacts: Array<{ name: string; title: string; email: string; linkedin: string } | null>;
 }
 
 export default function RoleLauncherPage() {
@@ -61,17 +60,14 @@ export default function RoleLauncherPage() {
   const [result, setResult] = useState<Result | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [mode, setMode] = useState<'deciding' | 'manual' | 'confirmed'>('deciding');
-  const [activeTab, setActiveTab] = useState<'jobs' | 'candidate' | 'employer'>('jobs');
+  const [activeTab, setActiveTab] = useState<'roles' | 'candidate' | 'employer'>('roles');
 
   const handleSubmit = async () => {
-    if (!candidateName || !cv || !course || !salaryBand) {
-      setError('Please fill in all fields'); return;
-    }
+    if (!candidateName || !cv || !course || !salaryBand) { setError('Please fill in all fields'); return; }
     setError(''); setLoading(true); setResult(null); setMode('deciding'); setSelected(new Set());
     try {
       const res = await fetch('/api/placement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cv, course, salaryBand, candidateName }),
       });
       const data = await res.json();
@@ -83,45 +79,36 @@ export default function RoleLauncherPage() {
     } finally { setLoading(false); }
   };
 
-  const toggleJob = (i: number) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(i) ? next.delete(i) : next.add(i);
-      return next;
-    });
+  const toggleRole = (i: number) => {
+    setSelected(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
   };
 
-  const selectedJobs = result ? result.jobs.filter((_, i) => selected.has(i)) : [];
+  const selectedRoles = result ? result.roles.filter((_, i) => selected.has(i)) : [];
 
   const candidateMessage = result ? [
     'Hi ' + result.candidateName + ',',
     '',
-    'Here are some current openings I have shortlisted for you based on your background and your ' + result.courseTitle + ' course. These have been selected because they align with your experience combined with your new digital skills.',
+    'Here are some role directions I have shortlisted for you based on your background and your ' + result.courseTitle + ' course.',
+    'These have been selected because they align with your experience combined with your new digital skills.',
+    'Each one includes a direct link to search live openings on MyCareersFuture.',
     '',
-    'Review and apply at your own pace — happy to discuss any of these in our next session:',
-    '',
-    ...selectedJobs.map((j, i) =>
-      (i + 1) + '. ' + (j.title ?? '') + ' — ' + (j.postedCompany?.name ?? '') +
-      (j.salary?.minimum ? ' | SGD ' + j.salary.minimum.toLocaleString() + (j.salary.maximum ? '–' + j.salary.maximum.toLocaleString() : '') + '/mo' : '') +
-      '\n   Why it fits you: ' + j.fitReason +
-      '\n   Apply: ' + (j.externalApplyUrl ?? j.applyUrl ?? 'See MCF listing')
+    ...selectedRoles.map((r, i) =>
+      (i + 1) + '. ' + r.title +
+      '\n   ' + r.why +
+      '\n   Where to look: ' + r.orgTypes +
+      '\n   Search live jobs → ' + r.mcfUrl
     ),
     '',
-    'Let me know if any catch your eye and we can prep your application together.',
+    'Review at your own pace and flag any that interest you — happy to discuss in our next session.',
   ].join('\n') : '';
 
   const whatsappPrompt = result ? [
     'You are helping a career specialist send a WhatsApp message to a job seeker named ' + result.candidateName + '.',
-    'Write a warm, encouraging message sharing these ' + selectedJobs.length + ' job openings that match their profile.',
-    'Keep it conversational, brief, and mobile-friendly. Use line breaks between each job.',
-    'Include the job title, company name, and apply link for each.',
-    'End with an offer to discuss in the next coaching session.',
+    'Write a warm encouraging message sharing these ' + selectedRoles.length + ' role directions that match their profile.',
+    'Keep it conversational, brief and mobile-friendly. Include the MCF search link for each.',
     '',
-    'Jobs to share:',
-    ...selectedJobs.map((j, i) =>
-      (i + 1) + '. ' + (j.title ?? '') + ' at ' + (j.postedCompany?.name ?? '') +
-      ' | Apply: ' + (j.externalApplyUrl ?? j.applyUrl ?? 'MCF listing')
-    ),
+    'Roles to share:',
+    ...selectedRoles.map((r, i) => (i + 1) + '. ' + r.title + ' | ' + r.mcfUrl),
   ].join('\n') : '';
 
   return (
@@ -134,11 +121,10 @@ export default function RoleLauncherPage() {
           <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#4ade80,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0 }}>🚀</div>
           <div>
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.025em' }}>Role Launcher</h1>
-            <p style={{ margin: '0.2rem 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Smart job matching · Live MCF listings · Employer outreach</p>
+            <p style={{ margin: '0.2rem 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Smart role matching · Live MCF search links · Employer outreach</p>
           </div>
         </div>
 
-        {/* Input form */}
         <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem', marginBottom: '1rem' }}>
           <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 1rem' }}>Candidate Details</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem', marginBottom: '0.85rem' }}>
@@ -164,7 +150,7 @@ export default function RoleLauncherPage() {
           <div>
             <label style={labelStyle}>Resume / Work History <span style={{ color: '#60a5fa' }}>*</span></label>
             <textarea value={cv} onChange={e => setCv(e.target.value)} rows={6}
-              placeholder="Paste candidate resume or career summary. Include job titles, responsibilities, domain, achievements. The AI uses this to find roles where their background is a genuine advantage."
+              placeholder="Paste candidate resume or career summary. Include job titles, responsibilities, domain, achievements. The AI uses this to find roles where their background is a genuine advantage — not just generic titles."
               style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
           </div>
         </div>
@@ -182,19 +168,10 @@ export default function RoleLauncherPage() {
 
         {result && (
           <div>
-            {/* Search keywords used */}
-            <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>Search angles used:</span>
-              {result.keywords.map((k, i) => (
-                <span key={i} style={{ fontSize: '0.72rem', background: 'rgba(255,255,255,0.08)', padding: '0.2rem 0.6rem', borderRadius: 20, color: 'rgba(255,255,255,0.6)' }}>{k}</span>
-              ))}
-            </div>
-
-            {/* Jobs list */}
             <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem', marginBottom: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>
-                  {result.jobs.length} Matched Roles — ranked by fit
+                  {result.roles.length} Role Directions — ranked by fit
                 </p>
                 {mode === 'deciding' && (
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -222,11 +199,11 @@ export default function RoleLauncherPage() {
                 )}
               </div>
 
-              {result.jobs.map((j, i) => {
+              {result.roles.map((r, i) => {
                 const isSelected = selected.has(i);
                 const isTop5 = result.top5Indices.includes(i);
                 return (
-                  <div key={i} onClick={() => mode === 'manual' && toggleJob(i)}
+                  <div key={i} onClick={() => mode === 'manual' && toggleRole(i)}
                     style={{ background: isSelected ? 'rgba(74,222,128,0.08)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (isSelected ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.08)'), borderRadius: 12, padding: '1rem', marginBottom: '0.6rem', cursor: mode === 'manual' ? 'pointer' : 'default', transition: 'all 0.2s' }}>
                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                       {mode === 'manual' && (
@@ -236,33 +213,19 @@ export default function RoleLauncherPage() {
                       )}
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.4rem' }}>
-                          <div>
-                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{j.title ?? 'Role'}</span>
-                            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', marginLeft: '0.5rem' }}>{j.postedCompany?.name ?? ''}</span>
-                          </div>
+                          <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{r.title}</span>
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                             {isTop5 && <span style={{ fontSize: '0.65rem', background: 'rgba(74,222,128,0.2)', color: '#4ade80', padding: '0.15rem 0.5rem', borderRadius: 20, fontWeight: 700 }}>TOP 5</span>}
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: j.fitScore >= 75 ? '#4ade80' : j.fitScore >= 55 ? '#facc15' : '#f87171' }}>{j.fitScore}% fit</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: r.fitScore >= 75 ? '#4ade80' : r.fitScore >= 55 ? '#facc15' : '#f87171' }}>{r.fitScore}% fit</span>
                           </div>
                         </div>
-                        {j.salary?.minimum && (
-                          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>
-                            SGD {j.salary.minimum.toLocaleString()}{j.salary.maximum ? '–' + j.salary.maximum.toLocaleString() : ''}/mo
-                          </div>
-                        )}
-                        <p style={{ margin: '0 0 0.35rem', fontSize: '0.8rem', color: '#4ade80', lineHeight: 1.45 }}>↳ {j.fitReason}</p>
-                        {(j.externalApplyUrl ?? j.applyUrl) && (
-                          <a href={j.externalApplyUrl ?? j.applyUrl} target="_blank" rel="noreferrer"
-                            style={{ fontSize: '0.75rem', color: '#60a5fa', textDecoration: 'none' }}>
-                            Apply on MCF →
-                          </a>
-                        )}
-                        {j.apolloContact && (
-                          <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(96,165,250,0.08)', borderRadius: 8, fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>
-                            👤 {j.apolloContact.name} · {j.apolloContact.title}
-                            {j.apolloContact.email && <span> · {j.apolloContact.email}</span>}
-                          </div>
-                        )}
+                        <p style={{ margin: '0 0 0.35rem', fontSize: '0.8rem', color: '#4ade80', lineHeight: 1.45 }}>↳ {r.why}</p>
+                        <p style={{ margin: '0 0 0.35rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.45)', lineHeight: 1.4 }}>🏢 {r.orgTypes}</p>
+                        <a href={r.mcfUrl} target="_blank" rel="noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ fontSize: '0.75rem', color: '#60a5fa', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          Search "{r.mcfKeyword}" on MCF →
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -270,9 +233,8 @@ export default function RoleLauncherPage() {
               })}
             </div>
 
-            {mode === 'confirmed' && selectedJobs.length > 0 && (
+            {mode === 'confirmed' && selectedRoles.length > 0 && (
               <div>
-                {/* Output tabs */}
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   {[{ id: 'candidate', label: '💬 Candidate Message' }, { id: 'employer', label: '📧 Employer Outreach' }].map(t => (
                     <button key={t.id} onClick={() => setActiveTab(t.id as any)}
@@ -294,7 +256,7 @@ export default function RoleLauncherPage() {
                     <pre style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{candidateMessage}</pre>
                     <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'rgba(96,165,250,0.08)', borderRadius: 12, border: '1px solid rgba(96,165,250,0.15)' }}>
                       <p style={{ margin: '0 0 0.5rem', fontSize: '0.68rem', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>WhatsApp via Claude</p>
-                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>Copy this prompt and paste it into a new Claude chat to send via WhatsApp:</p>
+                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>Copy this prompt into a new Claude chat to generate a WhatsApp message:</p>
                       <pre style={{ margin: 0, fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'inherit', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: 8 }}>{whatsappPrompt}</pre>
                       <button onClick={() => navigator.clipboard.writeText(whatsappPrompt)}
                         style={{ marginTop: '0.75rem', padding: '0.4rem 0.8rem', borderRadius: 8, border: '1px solid rgba(96,165,250,0.3)', background: 'transparent', color: '#60a5fa', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -307,17 +269,20 @@ export default function RoleLauncherPage() {
                 {activeTab === 'employer' && (
                   <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem' }}>
                     <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 1rem' }}>Employer Outreach Emails</p>
-                    {selectedJobs.map((j, i) => {
-                      const contact = j.apolloContact;
+                    <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', margin: '0 0 1rem', lineHeight: 1.5 }}>
+                      These are template outreach emails for companies in the sectors relevant to this candidate. Personalise the company name and role before sending.
+                    </p>
+                    {selectedRoles.map((r, i) => {
+                      const contact = result.apolloContacts?.[i] ?? null;
                       const firstName = contact?.name?.split(' ')[0] ?? 'there';
                       const emailBody = [
-                        'Subject: Candidate for your ' + (j.title ?? 'open role') + ' at ' + (j.postedCompany?.name ?? 'your company'),
+                        'Subject: Candidate opportunity — ' + r.title,
                         '',
                         'Hi ' + firstName + ',',
                         '',
-                        'I noticed ' + (j.postedCompany?.name ?? 'your company') + ' is hiring for ' + (j.title ?? 'this role') + '. I happen to know someone who could be a strong fit.',
+                        'I noticed [Company] is hiring for [role similar to ' + r.title + ']. I happen to know someone who could be a strong fit.',
                         '',
-                        result.candidateName + ' brings ' + result.courseSkills.split(',').slice(0, 3).join(', ') + ' skills combined with solid domain experience. They are actively looking and available to start relatively soon.',
+                        result.candidateName + ' brings solid domain experience combined with newly acquired ' + result.courseSkills.split(',').slice(0, 3).join(', ') + ' skills. They are actively looking and available to start relatively soon.',
                         '',
                         'Is this role still open? If so, I would be happy to share the resume. No cost to you for accepting it.',
                         '',
@@ -330,10 +295,11 @@ export default function RoleLauncherPage() {
                         <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '1.1rem', marginBottom: '0.85rem', border: '1px solid rgba(255,255,255,0.08)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{j.title} — {j.postedCompany?.name}</div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{r.title}</div>
+                              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>Sector: {r.orgTypes}</div>
                               {contact
-                                ? <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginTop: 2 }}>To: {contact.name} ({contact.title}){contact.email ? ' · ' + contact.email : ' · email not found'}</div>
-                                : <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>No Apollo contact found — search manually</div>
+                                ? <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginTop: 2 }}>Apollo contact: {contact.name} ({contact.title}){contact.email ? ' · ' + contact.email : ''}</div>
+                                : <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>No Apollo contact found — search manually on apollo.io</div>
                               }
                             </div>
                             <button onClick={() => navigator.clipboard.writeText(emailBody)}

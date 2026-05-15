@@ -22,79 +22,6 @@ const SAL_MAP: Record<string, number> = {
   '1': 2000, '2': 2500, '3': 3500, '4': 4500, '5': 6000, '6': 8000,
 };
 
-async function getSearchKeywords(cv: string, course: string, courseSkills: string): Promise<string[]> {
-  const prompt = [
-    'You are a Singapore recruitment expert. Given this candidate profile, generate 6 smart MCF job search keyword phrases.',
-    'Do NOT use generic titles. Think about what organisations actually need from someone with this background and these new skills.',
-    'A person with HR background doing a digital course should not just get "HR Analyst" — think "people analytics", "HR tech implementation", "digital learning coordinator" etc.',
-    'Return ONLY a JSON array of 6 short keyword strings, no explanation.',
-    '',
-    'CV: ' + cv.slice(0, 2000),
-    'Course: ' + course,
-    'Course skills: ' + courseSkills,
-  ].join('\n');
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY },
-    body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.7 }),
-  });
-  const data = await res.json();
-  const raw = data.choices?.[0]?.message?.content?.trim() ?? '[]';
-  const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-  return JSON.parse(cleaned);
-}
-
-async function searchMCF(keyword: string, salaryMin: number, salaryMax: number) {
-  const params = new URLSearchParams({
-    search: keyword,
-    salary: salaryMin.toString(),
-    limit: '5',
-  });
-  const res = await fetch('https://api.mycareersfuture.gov.sg/v2/jobs?' + params.toString(), {
-    headers: { 'Accept': 'application/json' },
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.results ?? []).filter((j: any) => {
-    const max = j.salary?.maximum ?? 0;
-    return max === 0 || max >= salaryMin;
-  }).slice(0, 5);
-}
-
-async function rankAndExplainJobs(jobs: any[], cv: string, course: string, courseSkills: string) {
-  if (jobs.length === 0) return [];
-  const jobList = jobs.map((j, i) =>
-    i + ': ' + (j.title ?? '') + ' at ' + (j.postedCompany?.name ?? '') +
-    ' | Salary: ' + (j.salary?.minimum ?? '?') + '-' + (j.salary?.maximum ?? '?') +
-    ' | ' + (j.description ?? '').slice(0, 200)
-  ).join('\n');
-
-  const prompt = [
-    'You are a Singapore career counsellor. Rank these jobs by fit for this candidate and explain WHY each one suits them specifically.',
-    'Focus on how their domain background + new course skills create a genuine advantage for each role.',
-    'Be specific — not generic. Mention what they bring that a fresh grad would not.',
-    'Return ONLY valid JSON array, no markdown:',
-    '[{ "index": 0, "fitScore": 85, "fitReason": "why this candidate specifically suits this role in 1-2 sentences" }]',
-    '',
-    'CV: ' + cv.slice(0, 1500),
-    'Course: ' + course + ' | Skills: ' + courseSkills,
-    '',
-    'Jobs:',
-    jobList,
-  ].join('\n');
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY },
-    body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.5 }),
-  });
-  const data = await res.json();
-  const raw = data.choices?.[0]?.message?.content?.trim() ?? '[]';
-  const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
-  return JSON.parse(cleaned);
-}
-
 async function findApolloContact(companyName: string) {
   try {
     const res = await fetch('https://api.apollo.io/v1/mixed_people/search', {
@@ -102,7 +29,7 @@ async function findApolloContact(companyName: string) {
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': process.env.APOLLO_API_KEY ?? '' },
       body: JSON.stringify({
         q_organization_name: companyName,
-        person_titles: ['HR Manager', 'Talent Acquisition', 'Recruiter', 'HR Director', 'People Manager', 'Hiring Manager'],
+        person_titles: ['HR Manager', 'Talent Acquisition', 'Recruiter', 'HR Director', 'People Manager'],
         page: 1, per_page: 1,
       }),
     });
@@ -116,9 +43,7 @@ async function findApolloContact(companyName: string) {
       email: person.email ?? '',
       linkedin: person.linkedin_url ?? '',
     };
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export async function POST(req: NextRequest) {
@@ -128,43 +53,54 @@ export async function POST(req: NextRequest) {
     const courseSkills = COURSE_SKILLS[course] ?? '';
     const courseTitle = COURSE_TITLES[course] ?? course;
     const salaryMin = SAL_MAP[salaryBand] ?? 3000;
-    const salaryMax = salaryMin * 2;
 
-    const keywords = await getSearchKeywords(cv, courseTitle, courseSkills);
+    const prompt = [
+      'You are a Singapore career counsellor. Given this candidate profile, generate 8 smart job role recommendations.',
+      'Do NOT use generic titles. Think about what organisations actually need from someone with this background and these new skills.',
+      'For each role, also suggest the best MCF search keyword to find it.',
+      'Return ONLY valid JSON array, no markdown:',
+      '[{',
+      '  "title": "specific role title that matches this candidate",',
+      '  "why": "1-2 sentences on why this candidate specifically suits this role - mention their domain background",',
+      '  "orgTypes": "types of organisations hiring for this e.g. VWOs, banks, healthcare groups, tech startups",',
+      '  "mcfKeyword": "2-3 word search term to find this on MCF",',
+      '  "fitScore": 85',
+      '}]',
+      '',
+      'CV: ' + (cv || '').slice(0, 2000),
+      'Course: ' + courseTitle + ' | Skills: ' + courseSkills,
+      'Salary expectation: SGD ' + salaryMin.toLocaleString() + '/mo',
+    ].join('\n');
 
-    const allJobsRaw: any[] = [];
-    const seen = new Set<string>();
-    for (const kw of keywords) {
-      const results = await searchMCF(kw, salaryMin, salaryMax);
-      for (const j of results) {
-        const id = j.uuid ?? j.id ?? (j.title + j.postedCompany?.name);
-        if (!seen.has(id)) { seen.add(id); allJobsRaw.push(j); }
-      }
-    }
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY },
+      body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], temperature: 0.7 }),
+    });
 
-    const rankings = await rankAndExplainJobs(allJobsRaw, cv, courseTitle, courseSkills);
+    if (!res.ok) throw new Error('OpenAI error ' + res.status);
+    const data = await res.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? '[]';
+    const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    const roles = JSON.parse(cleaned);
 
-    const ranked = rankings
-      .map((r: any) => ({ ...allJobsRaw[r.index], fitScore: r.fitScore, fitReason: r.fitReason }))
-      .sort((a: any, b: any) => b.fitScore - a.fitScore)
-      .slice(0, 10);
+    const rolesWithLinks = roles.map((r: any) => ({
+      ...r,
+      mcfUrl: 'https://www.mycareersfuture.gov.sg/search?search=' + encodeURIComponent(r.mcfKeyword) + '&salary=' + salaryMin + '&sortBy=new_posting_date',
+    }));
 
-    const top5 = ranked.slice(0, 5);
-
-    const jobsWithContacts = await Promise.all(
-      ranked.map(async (j: any) => {
-        const contact = await findApolloContact(j.postedCompany?.name ?? '');
-        return { ...j, apolloContact: contact };
-      })
+    const top3Companies = rolesWithLinks.slice(0, 3).map((r: any) => r.orgTypes?.split(',')[0]?.trim() ?? '');
+    const apolloContacts = await Promise.all(
+      top3Companies.map((company: string) => company ? findApolloContact(company) : Promise.resolve(null))
     );
 
     return NextResponse.json({
-      keywords,
-      jobs: jobsWithContacts,
-      top5Indices: top5.map((_: any, i: number) => i),
+      roles: rolesWithLinks,
+      top5Indices: [0, 1, 2, 3, 4],
       candidateName,
       courseTitle,
       courseSkills,
+      apolloContacts,
     });
 
   } catch (e: unknown) {

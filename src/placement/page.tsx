@@ -1,370 +1,362 @@
-'use client'
-import { useState } from 'react'
-import Link from 'next/link'
+'use client';
 
-const COURSES: Record<string, string> = {
-  PDDS: 'Professional Diploma in Data Science',
-  PDDI: 'Professional Diploma in Digital Innovation',
-  ACIS: 'Advanced Certificate in Infrastructure Support',
-  PDCA: 'Professional Diploma in Cloud Administration',
-  PDDM: 'Professional Diploma in Digital Marketing',
-  PDFSWD: 'Professional Diploma in Full Stack Web Development',
+import { useState } from 'react';
+
+const COURSES = [
+  { code: 'PDDS',   title: 'Professional Diploma in Data Science' },
+  { code: 'PDDI',   title: 'Professional Diploma in Digital Innovation' },
+  { code: 'ACIS',   title: 'Advanced Certificate in Infrastructure Support' },
+  { code: 'PDCA',   title: 'Professional Diploma in Cloud Administration' },
+  { code: 'PDDM',   title: 'Professional Diploma in Digital Marketing' },
+  { code: 'PDFSWD', title: 'Professional Diploma in Full Stack Web Development' },
+];
+
+const SALARY_RANGES = [
+  { label: 'Below $2,000',     value: '1' },
+  { label: '$2,000 – $2,999',  value: '2' },
+  { label: '$3,000 – $3,999',  value: '3' },
+  { label: '$4,000 – $4,999',  value: '4' },
+  { label: '$5,000 – $6,999',  value: '5' },
+  { label: '$7,000 and above', value: '6' },
+];
+
+const inputStyle: React.CSSProperties = {
+  width: '100%', boxSizing: 'border-box',
+  background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+  borderRadius: '10px', padding: '0.7rem 1rem', color: 'white',
+  fontSize: '0.875rem', outline: 'none', fontFamily: 'inherit',
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: '0.75rem', fontWeight: 600,
+  color: 'rgba(255,255,255,0.6)', marginBottom: '0.4rem', letterSpacing: '0.01em',
+};
+
+interface Job {
+  uuid?: string; title?: string;
+  postedCompany?: { name?: string };
+  salary?: { minimum?: number; maximum?: number };
+  description?: string;
+  applyUrl?: string; externalApplyUrl?: string;
+  fitScore: number; fitReason: string;
+  apolloContact?: { name: string; title: string; email: string; linkedin: string } | null;
 }
 
-const COURSES_SKILLS: Record<string, string> = {
-  PDDS: 'Power BI, Python, Machine Learning, Deep Learning, Generative AI, Azure AI, Power Automate, Data Visualisation, NLP, Scrum',
-  PDDI: 'Power BI, Power Automate, Power Apps, Generative AI, Microsoft Copilot, Digital Transformation, Agile, Low-code Development, Prompt Engineering',
-  ACIS: 'Server Administration, Networking, IT Operating Systems, Cloud Fundamentals (Azure), Linux, IT Customer Service, Virtualisation, Shell Scripting',
-  PDCA: 'Azure Cloud Administration, Hybrid Cloud, Azure AD, Azure Virtual Desktop, Cloud Security Governance, Identity Management, Windows Server',
-  PDDM: 'Google Ads, Facebook Ads, SEO, Email Marketing, Web Analytics, Marketing Automation, CRM, WordPress, Video Marketing, Omni-channel, Agile',
-  PDFSWD: 'HTML/CSS, JavaScript, React, Node.js, SQL, NoSQL, MVC, REST APIs, Generative AI, GitHub Copilot, Agile, Enterprise Software Development',
+interface Result {
+  keywords: string[];
+  jobs: Job[];
+  top5Indices: number[];
+  candidateName: string;
+  courseTitle: string;
+  courseSkills: string;
 }
 
-interface Role {
-  title: string
-  tier: 'Best Fit' | 'Good Fit' | 'Stretch'
-  rationale: string
-  salary_min: number
-  salary_max: number
-  companies: string[]
-  search_keywords: string[]
-}
+export default function RoleLauncherPage() {
+  const [candidateName, setCandidateName] = useState('');
+  const [cv, setCv] = useState('');
+  const [course, setCourse] = useState('');
+  const [salaryBand, setSalaryBand] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<Result | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [mode, setMode] = useState<'deciding' | 'manual' | 'confirmed'>('deciding');
+  const [activeTab, setActiveTab] = useState<'jobs' | 'candidate' | 'employer'>('jobs');
 
-interface Analysis {
-  name: string
-  headline: string
-  experience_years: number
-  top_skills: string[]
-  roles: Role[]
-}
-
-interface MCFJob {
-  title: string
-  company: string
-  salary: string
-  url: string
-  posted: string
-}
-
-const TIER_COLORS: Record<string, { bg: string; text: string }> = {
-  'Best Fit': { bg: '#EAF3DE', text: '#3B6D11' },
-  'Good Fit': { bg: '#E6F1FB', text: '#185FA5' },
-  'Stretch': { bg: '#FAEEDA', text: '#854F0B' },
-}
-
-export default function Placement() {
-  const [step, setStep] = useState(0)
-  const [course, setCourse] = useState('PDDS')
-  const [cv, setCv] = useState('')
-  const [salMin, setSalMin] = useState('4000')
-  const [salMax, setSalMax] = useState('6000')
-  const [loading, setLoading] = useState(false)
-  const [loadMsg, setLoadMsg] = useState('')
-  const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [pitch, setPitch] = useState<{ subject: string; lines: string[] } | null>(null)
-  const [error, setError] = useState('')
-  const [activeRole, setActiveRole] = useState<string | null>(null)
-  const [mcfJobs, setMcfJobs] = useState<Record<string, MCFJob[]>>({})
-  const [mcfLoading, setMcfLoading] = useState(false)
-  const [jobDays, setJobDays] = useState(7)
-  const [copied, setCopied] = useState(false)
-
-  async function analyse() {
-    if (!cv.trim()) { setError('Please paste the candidate CV.'); return }
-    if (parseInt(salMin) > parseInt(salMax)) { setError('Min salary cannot be higher than max.'); return }
-    setError(''); setLoading(true)
-    try {
-      setLoadMsg('Analysing candidate profile...')
-      const r1 = await fetch('/api/analyse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cv, course, salMin, salMax, courseSkills: COURSES_SKILLS[course] })
-      })
-      const d1 = await r1.json()
-      if (d1.error) throw new Error(d1.error)
-      setAnalysis(d1)
-      setStep(1)
-      setLoadMsg('Writing recruiter pitch...')
-      const r2 = await fetch('/api/pitch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cv, course, courseLabel: COURSES[course], salMin, salMax })
-      })
-      const d2 = await r2.json()
-      if (!d2.error) setPitch(d2)
-    } catch (e: any) {
-      setError('Analysis failed: ' + e.message)
+  const handleSubmit = async () => {
+    if (!candidateName || !cv || !course || !salaryBand) {
+      setError('Please fill in all fields'); return;
     }
-    setLoading(false); setLoadMsg('')
-  }
-
-  async function loadMCF(roleTitle: string, keywords: string) {
-    if (mcfJobs[roleTitle]) return
-    setMcfLoading(true)
+    setError(''); setLoading(true); setResult(null); setMode('deciding'); setSelected(new Set());
     try {
-      const r = await fetch(`/api/mcf?q=${encodeURIComponent(keywords)}&salary=${salMin}`)
-      const d = await r.json()
-      setMcfJobs(p => ({ ...p, [roleTitle]: d.jobs || [] }))
-    } catch { setMcfJobs(p => ({ ...p, [roleTitle]: [] })) }
-    setMcfLoading(false)
-  }
+      const res = await fetch('/api/placement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cv, course, salaryBand, candidateName }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setResult(data);
+      setSelected(new Set(data.top5Indices));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
+    } finally { setLoading(false); }
+  };
 
-  function reset() {
-    setStep(0); setAnalysis(null); setPitch(null); setCv('')
-    setActiveRole(null); setError(''); setMcfJobs({})
-  }
+  const toggleJob = (i: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  };
 
-  const steps = ['Candidate Profile', 'Role Matches', 'Live Jobs', 'Recruiter Pitch']
+  const selectedJobs = result ? result.jobs.filter((_, i) => selected.has(i)) : [];
+
+  const candidateMessage = result ? [
+    'Hi ' + result.candidateName + ',',
+    '',
+    'Here are some current openings I have shortlisted for you based on your background and your ' + result.courseTitle + ' course. These have been selected because they align with your experience combined with your new digital skills.',
+    '',
+    'Review and apply at your own pace — happy to discuss any of these in our next session:',
+    '',
+    ...selectedJobs.map((j, i) =>
+      (i + 1) + '. ' + (j.title ?? '') + ' — ' + (j.postedCompany?.name ?? '') +
+      (j.salary?.minimum ? ' | SGD ' + j.salary.minimum.toLocaleString() + (j.salary.maximum ? '–' + j.salary.maximum.toLocaleString() : '') + '/mo' : '') +
+      '\n   Why it fits you: ' + j.fitReason +
+      '\n   Apply: ' + (j.externalApplyUrl ?? j.applyUrl ?? 'See MCF listing')
+    ),
+    '',
+    'Let me know if any catch your eye and we can prep your application together.',
+  ].join('\n') : '';
+
+  const whatsappPrompt = result ? [
+    'You are helping a career specialist send a WhatsApp message to a job seeker named ' + result.candidateName + '.',
+    'Write a warm, encouraging message sharing these ' + selectedJobs.length + ' job openings that match their profile.',
+    'Keep it conversational, brief, and mobile-friendly. Use line breaks between each job.',
+    'Include the job title, company name, and apply link for each.',
+    'End with an offer to discuss in the next coaching session.',
+    '',
+    'Jobs to share:',
+    ...selectedJobs.map((j, i) =>
+      (i + 1) + '. ' + (j.title ?? '') + ' at ' + (j.postedCompany?.name ?? '') +
+      ' | Apply: ' + (j.externalApplyUrl ?? j.applyUrl ?? 'MCF listing')
+    ),
+  ].join('\n') : '';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Back</Link>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#185FA5' }}>
-              <span className="text-white font-bold text-xs tracking-widest">CARL</span>
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg,#0a2342 0%,#1a4a8a 50%,#1565c0 100%)', fontFamily: "'Segoe UI',system-ui,sans-serif", color: 'white', padding: '2rem 1rem 4rem' }}>
+      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
+
+        <a href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'rgba(255,255,255,0.45)', fontSize: '0.8rem', textDecoration: 'none', marginBottom: '1.5rem' }}>← Back to CARL</a>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: 'linear-gradient(135deg,#4ade80,#16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.4rem', flexShrink: 0 }}>🚀</div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 700, letterSpacing: '-0.025em' }}>Role Launcher</h1>
+            <p style={{ margin: '0.2rem 0 0', color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem' }}>Smart job matching · Live MCF listings · Employer outreach</p>
+          </div>
+        </div>
+
+        {/* Input form */}
+        <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem', marginBottom: '1rem' }}>
+          <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 1rem' }}>Candidate Details</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem', marginBottom: '0.85rem' }}>
+            <div>
+              <label style={labelStyle}>Candidate Name <span style={{ color: '#60a5fa' }}>*</span></label>
+              <input value={candidateName} onChange={e => setCandidateName(e.target.value)} placeholder="e.g. Siti Rahimah" style={inputStyle} />
             </div>
             <div>
-              <h1 className="font-medium text-gray-900">Placement</h1>
-              <p className="text-xs text-gray-500">Post-course job matching · Singapore</p>
+              <label style={labelStyle}>Course Completed <span style={{ color: '#60a5fa' }}>*</span></label>
+              <select value={course} onChange={e => setCourse(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                <option value="">Select course…</option>
+                {COURSES.map(c => <option key={c.code} value={c.code} style={{ background: '#1a4a8a' }}>{c.code} — {c.title}</option>)}
+              </select>
             </div>
           </div>
-        </div>
-
-        {/* Step tabs */}
-        <div className="flex gap-1 mb-8 bg-gray-100 rounded-xl p-1">
-          {steps.map((s, i) => {
-            const isActive = step === i
-            const isDone = i < step
-            return (
-              <button key={i} onClick={() => analysis && setStep(i)}
-                className="flex-1 py-2 px-1 rounded-lg text-xs font-medium flex items-center justify-center gap-1 transition-all"
-                style={{ background: isActive ? '#185FA5' : isDone ? '#EAF3DE' : 'transparent', color: isActive ? '#fff' : isDone ? '#3B6D11' : '#888' }}>
-                <span className="w-4 h-4 rounded-full text-xs flex items-center justify-center"
-                  style={{ background: isActive ? 'rgba(255,255,255,0.2)' : isDone ? '#3B6D11' : '#ddd', color: isActive || isDone ? '#fff' : '#888' }}>
-                  {isDone ? '✓' : i + 1}
-                </span>
-                <span className="hidden sm:inline">{s}</span>
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Step 0 — Input */}
-        {step === 0 && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-2xl p-6 border border-gray-100">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Course</p>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {Object.keys(COURSES).map(c => (
-                  <button key={c} onClick={() => setCourse(c)}
-                    className="px-3 py-1 rounded-full text-xs font-medium border transition-all"
-                    style={{ background: course === c ? '#185FA5' : 'transparent', color: course === c ? '#fff' : '#666', borderColor: course === c ? '#185FA5' : '#ddd' }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-gray-400">{COURSES[course]}</p>
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 border border-gray-100">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">CV / Resume Text <span className="text-red-400">*</span></p>
-              <textarea value={cv} onChange={e => setCv(e.target.value)}
-                placeholder="Paste full CV here — work history, education, skills..."
-                className="w-full h-48 text-sm border border-gray-200 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-100 text-gray-700" />
-            </div>
-
-            <div className="bg-white rounded-2xl p-6 border border-gray-100">
-              <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-3">Salary Expectation</p>
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-400">SGD</span>
-                <input type="number" value={salMin} onChange={e => setSalMin(e.target.value)} step="500"
-                  className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100" />
-                <span className="text-sm text-gray-400">to</span>
-                <input type="number" value={salMax} onChange={e => setSalMax(e.target.value)} step="500"
-                  className="w-28 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-100" />
-                <span className="text-sm text-gray-400">/month</span>
-              </div>
-            </div>
-
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-
-            <button onClick={analyse} disabled={loading}
-              className="w-full py-3 rounded-xl font-medium text-sm transition-all"
-              style={{ background: loading ? '#ddd' : '#185FA5', color: loading ? '#888' : '#fff' }}>
-              {loading ? (loadMsg || 'Analysing...') : 'Analyse candidate with CARL'}
-            </button>
+          <div style={{ marginBottom: '0.85rem' }}>
+            <label style={labelStyle}>Salary Expectation <span style={{ color: '#60a5fa' }}>*</span></label>
+            <select value={salaryBand} onChange={e => setSalaryBand(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+              <option value="">Select range…</option>
+              {SALARY_RANGES.map(r => <option key={r.value} value={r.value} style={{ background: '#1a4a8a' }}>{r.label}</option>)}
+            </select>
           </div>
-        )}
-
-        {/* Step 1 — Roles */}
-        {step === 1 && analysis && (
           <div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-              {[['Candidate', analysis.name], ['Experience', analysis.experience_years + ' yrs'], ['Course', course], ['Salary', 'SGD ' + parseInt(salMin).toLocaleString() + '-' + parseInt(salMax).toLocaleString()]].map(([l, v]) => (
-                <div key={l} className="bg-white rounded-xl p-3 border border-gray-100">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">{l}</p>
-                  <p className="text-sm font-medium text-gray-800">{v}</p>
-                </div>
+            <label style={labelStyle}>Resume / Work History <span style={{ color: '#60a5fa' }}>*</span></label>
+            <textarea value={cv} onChange={e => setCv(e.target.value)} rows={6}
+              placeholder="Paste candidate resume or career summary. Include job titles, responsibilities, domain, achievements. The AI uses this to find roles where their background is a genuine advantage."
+              style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
+          </div>
+        </div>
+
+        {error && <div style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: 12, padding: '0.85rem 1.1rem', marginBottom: '0.85rem', color: '#fca5a5', fontSize: '0.85rem' }}>⚠️ {error}</div>}
+
+        <button onClick={handleSubmit} disabled={loading} style={{
+          width: '100%', padding: '1rem', border: 'none', borderRadius: 13, fontFamily: 'inherit',
+          background: loading ? 'rgba(255,255,255,0.08)' : 'linear-gradient(135deg,#16a34a,#15803d)',
+          color: 'white', fontSize: '0.95rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+          marginBottom: '2rem', boxShadow: loading ? 'none' : '0 8px 28px rgba(22,163,74,.35)',
+        }}>
+          {loading ? '⟳ Finding matching roles…' : '🚀 Launch Role Search'}
+        </button>
+
+        {result && (
+          <div>
+            {/* Search keywords used */}
+            <div style={{ marginBottom: '1rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>Search angles used:</span>
+              {result.keywords.map((k, i) => (
+                <span key={i} style={{ fontSize: '0.72rem', background: 'rgba(255,255,255,0.08)', padding: '0.2rem 0.6rem', borderRadius: 20, color: 'rgba(255,255,255,0.6)' }}>{k}</span>
               ))}
             </div>
 
-            <div className="flex flex-wrap gap-2 mb-4">
-              {['High Touch', 'D2 (SCTP)', course].map(b => (
-                <span key={b} className="px-3 py-1 rounded-full text-xs font-medium" style={{ background: '#E6F1FB', color: '#185FA5' }}>{b}</span>
-              ))}
-              {analysis.top_skills?.map(s => (
-                <span key={s} className="px-3 py-1 rounded-full text-xs bg-gray-100 text-gray-600">{s}</span>
-              ))}
-            </div>
-
-            <div className="flex gap-2 mb-4">
-              <button onClick={() => setActiveRole(null)}
-                className="px-3 py-1 rounded-full text-xs border transition-all"
-                style={{ background: !activeRole ? '#185FA5' : 'transparent', color: !activeRole ? '#fff' : '#888', borderColor: !activeRole ? '#185FA5' : '#ddd' }}>All</button>
-              {Object.keys(TIER_COLORS).map(tier => {
-                const tc = TIER_COLORS[tier]
-                return (
-                  <button key={tier} onClick={() => setActiveRole(activeRole === tier ? null : tier)}
-                    className="px-3 py-1 rounded-full text-xs border transition-all"
-                    style={{ background: activeRole === tier ? tc.bg : 'transparent', color: activeRole === tier ? tc.text : '#888', borderColor: activeRole === tier ? tc.text : '#ddd' }}>
-                    {tier}
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="space-y-3">
-              {analysis.roles?.filter(r => !activeRole || r.tier === activeRole).map((r, i) => {
-                const tc = TIER_COLORS[r.tier] || TIER_COLORS['Good Fit']
-                return (
-                  <div key={i} className="bg-white rounded-2xl p-5 border border-gray-100">
-                    <div className="flex justify-between items-start gap-4 mb-3">
-                      <div>
-                        <p className="font-medium text-gray-900 mb-1">{r.title}</p>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: tc.bg, color: tc.text }}>{r.tier}</span>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-gray-800">SGD {r.salary_min?.toLocaleString()}-{r.salary_max?.toLocaleString()}</p>
-                        <p className="text-xs text-gray-400">per month</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-gray-500 mb-3">{r.rationale}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {r.companies?.map(c => (
-                        <span key={c} className="px-2 py-0.5 rounded-md text-xs bg-gray-50 text-gray-500 border border-gray-100">{c}</span>
-                      ))}
-                    </div>
+            {/* Jobs list */}
+            <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem', marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>
+                  {result.jobs.length} Matched Roles — ranked by fit
+                </p>
+                {mode === 'deciding' && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button onClick={() => { setSelected(new Set(result.top5Indices)); setMode('confirmed'); setActiveTab('candidate'); }}
+                      style={{ padding: '0.5rem 1rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#4ade80,#16a34a)', color: 'white', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                      ✓ Accept top 5
+                    </button>
+                    <button onClick={() => setMode('manual')}
+                      style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'white', fontSize: '0.8rem', cursor: 'pointer' }}>
+                      Pick manually
+                    </button>
                   </div>
-                )
-              })}
-            </div>
-            <button onClick={() => setStep(2)} className="w-full mt-4 py-3 rounded-xl font-medium text-sm text-white" style={{ background: '#185FA5' }}>View Live Jobs</button>
-          </div>
-        )}
-
-        {/* Step 2 — Jobs */}
-        {step === 2 && (
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <p className="font-medium text-gray-900">Live jobs from MyCareersFuture</p>
-                <p className="text-xs text-gray-400 mt-0.5">Click Load to fetch real listings for each role</p>
-              </div>
-              <div className="flex gap-2">
-                {[7, 14].map(d => (
-                  <button key={d} onClick={() => setJobDays(d)}
-                    className="px-3 py-1 rounded-full text-xs border transition-all"
-                    style={{ background: jobDays === d ? '#185FA5' : 'transparent', color: jobDays === d ? '#fff' : '#888', borderColor: jobDays === d ? '#185FA5' : '#ddd' }}>
-                    {d}d
+                )}
+                {mode === 'manual' && (
+                  <button onClick={() => { setMode('confirmed'); setActiveTab('candidate'); }}
+                    style={{ padding: '0.5rem 1rem', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#4ade80,#16a34a)', color: 'white', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}>
+                    ✓ Confirm {selected.size} selected
                   </button>
-                ))}
+                )}
+                {mode === 'confirmed' && (
+                  <button onClick={() => setMode('manual')}
+                    style={{ padding: '0.5rem 0.75rem', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem', cursor: 'pointer' }}>
+                    Edit selection
+                  </button>
+                )}
               </div>
-            </div>
 
-            <div className="space-y-3">
-              {analysis?.roles?.map((r, i) => {
-                const tc = TIER_COLORS[r.tier] || TIER_COLORS['Good Fit']
-                const keywords = (r.search_keywords || []).join(' ') || r.title
-                const loaded = mcfJobs.hasOwnProperty(r.title)
-                const jobs = mcfJobs[r.title] || []
+              {result.jobs.map((j, i) => {
+                const isSelected = selected.has(i);
+                const isTop5 = result.top5Indices.includes(i);
                 return (
-                  <div key={i} className="bg-white rounded-2xl p-5 border border-gray-100">
-                    <div className="flex justify-between items-start gap-4 mb-3">
-                      <div>
-                        <p className="font-medium text-gray-900 mb-1">{r.title}</p>
-                        <span className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: tc.bg, color: tc.text }}>{r.tier}</span>
-                      </div>
-                      <button onClick={() => loadMCF(r.title, keywords)} disabled={mcfLoading}
-                        className="px-3 py-1 rounded-lg text-xs font-medium text-white transition-all"
-                        style={{ background: '#185FA5' }}>
-                        {mcfLoading && !loaded ? 'Loading...' : loaded ? 'Refresh' : 'Load MCF'}
-                      </button>
-                    </div>
-
-                    {!loaded && <p className="text-xs text-gray-400 italic">Searching: {keywords}</p>}
-
-                    {loaded && jobs.length > 0 && (
-                      <div className="border-t border-gray-50 pt-3 space-y-2">
-                        {jobs.map((j, ji) => (
-                          <div key={ji} className="flex justify-between items-center gap-4">
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-800 truncate">{j.title}</p>
-                              <p className="text-xs text-gray-400">{j.company} · {j.salary}</p>
-                            </div>
-                            <a href={j.url} target="_blank" rel="noopener noreferrer"
-                              className="px-3 py-1 rounded-lg text-xs font-medium shrink-0"
-                              style={{ background: '#EAF3DE', color: '#3B6D11' }}>
-                              View Post
-                            </a>
+                  <div key={i} onClick={() => mode === 'manual' && toggleJob(i)}
+                    style={{ background: isSelected ? 'rgba(74,222,128,0.08)' : 'rgba(255,255,255,0.04)', border: '1px solid ' + (isSelected ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.08)'), borderRadius: 12, padding: '1rem', marginBottom: '0.6rem', cursor: mode === 'manual' ? 'pointer' : 'default', transition: 'all 0.2s' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                      {mode === 'manual' && (
+                        <div style={{ width: 20, height: 20, borderRadius: 6, border: '2px solid ' + (isSelected ? '#4ade80' : 'rgba(255,255,255,0.3)'), background: isSelected ? '#4ade80' : 'transparent', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {isSelected && <span style={{ color: '#000', fontSize: '0.7rem', fontWeight: 800 }}>✓</span>}
+                        </div>
+                      )}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.4rem' }}>
+                          <div>
+                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{j.title ?? 'Role'}</span>
+                            <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.8rem', marginLeft: '0.5rem' }}>{j.postedCompany?.name ?? ''}</span>
                           </div>
-                        ))}
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                            {isTop5 && <span style={{ fontSize: '0.65rem', background: 'rgba(74,222,128,0.2)', color: '#4ade80', padding: '0.15rem 0.5rem', borderRadius: 20, fontWeight: 700 }}>TOP 5</span>}
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: j.fitScore >= 75 ? '#4ade80' : j.fitScore >= 55 ? '#facc15' : '#f87171' }}>{j.fitScore}% fit</span>
+                          </div>
+                        </div>
+                        {j.salary?.minimum && (
+                          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.35rem' }}>
+                            SGD {j.salary.minimum.toLocaleString()}{j.salary.maximum ? '–' + j.salary.maximum.toLocaleString() : ''}/mo
+                          </div>
+                        )}
+                        <p style={{ margin: '0 0 0.35rem', fontSize: '0.8rem', color: '#4ade80', lineHeight: 1.45 }}>↳ {j.fitReason}</p>
+                        {(j.externalApplyUrl ?? j.applyUrl) && (
+                          <a href={j.externalApplyUrl ?? j.applyUrl} target="_blank" rel="noreferrer"
+                            style={{ fontSize: '0.75rem', color: '#60a5fa', textDecoration: 'none' }}>
+                            Apply on MCF →
+                          </a>
+                        )}
+                        {j.apolloContact && (
+                          <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(96,165,250,0.08)', borderRadius: 8, fontSize: '0.72rem', color: 'rgba(255,255,255,0.6)' }}>
+                            👤 {j.apolloContact.name} · {j.apolloContact.title}
+                            {j.apolloContact.email && <span> · {j.apolloContact.email}</span>}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {loaded && jobs.length === 0 && (
-                      <p className="text-xs text-gray-400 mt-2">No listings found. Try 14 days or adjust salary.</p>
-                    )}
+                    </div>
                   </div>
-                )
+                );
               })}
             </div>
-            <button onClick={() => setStep(3)} className="w-full mt-4 py-3 rounded-xl font-medium text-sm text-white" style={{ background: '#185FA5' }}>Generate Recruiter Pitch</button>
-          </div>
-        )}
 
-        {/* Step 3 — Pitch */}
-        {step === 3 && (
-          <div>
-            {!pitch ? <p className="text-gray-400 text-sm">Generating pitch...</p> : (
-              <div className="bg-white rounded-2xl p-6 border border-gray-100">
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Subject</p>
-                <p className="font-medium text-gray-900 mb-4">{pitch.subject}</p>
-                <div className="border-t border-gray-50 pt-4 space-y-3">
-                  {pitch.lines?.map((line, i) => <p key={i} className="text-sm text-gray-700 leading-relaxed">{line}</p>)}
-                </div>
-                <div className="flex gap-2 mt-4">
-                  {['High Touch', 'D2 (SCTP)', course].map(b => (
-                    <span key={b} className="px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: '#E6F1FB', color: '#185FA5' }}>{b}</span>
+            {mode === 'confirmed' && selectedJobs.length > 0 && (
+              <div>
+                {/* Output tabs */}
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                  {[{ id: 'candidate', label: '💬 Candidate Message' }, { id: 'employer', label: '📧 Employer Outreach' }].map(t => (
+                    <button key={t.id} onClick={() => setActiveTab(t.id as any)}
+                      style={{ padding: '0.6rem 1.1rem', borderRadius: 10, border: 'none', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', background: activeTab === t.id ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)', color: activeTab === t.id ? 'white' : 'rgba(255,255,255,0.5)' }}>
+                      {t.label}
+                    </button>
                   ))}
                 </div>
+
+                {activeTab === 'candidate' && (
+                  <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                      <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>Candidate Shortlist Message</p>
+                      <button onClick={() => navigator.clipboard.writeText(candidateMessage)}
+                        style={{ padding: '0.4rem 0.8rem', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Copy
+                      </button>
+                    </div>
+                    <pre style={{ margin: 0, fontSize: '0.82rem', color: 'rgba(255,255,255,0.8)', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{candidateMessage}</pre>
+                    <div style={{ marginTop: '1.25rem', padding: '1rem', background: 'rgba(96,165,250,0.08)', borderRadius: 12, border: '1px solid rgba(96,165,250,0.15)' }}>
+                      <p style={{ margin: '0 0 0.5rem', fontSize: '0.68rem', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.08em' }}>WhatsApp via Claude</p>
+                      <p style={{ margin: '0 0 0.75rem', fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.5 }}>Copy this prompt and paste it into a new Claude chat to send via WhatsApp:</p>
+                      <pre style={{ margin: 0, fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'inherit', background: 'rgba(0,0,0,0.2)', padding: '0.75rem', borderRadius: 8 }}>{whatsappPrompt}</pre>
+                      <button onClick={() => navigator.clipboard.writeText(whatsappPrompt)}
+                        style={{ marginTop: '0.75rem', padding: '0.4rem 0.8rem', borderRadius: 8, border: '1px solid rgba(96,165,250,0.3)', background: 'transparent', color: '#60a5fa', fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                        Copy WhatsApp prompt
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'employer' && (
+                  <div style={{ background: 'rgba(255,255,255,0.07)', borderRadius: 18, border: '1px solid rgba(255,255,255,0.1)', padding: '1.5rem' }}>
+                    <p style={{ fontSize: '0.68rem', fontWeight: 700, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 1rem' }}>Employer Outreach Emails</p>
+                    {selectedJobs.map((j, i) => {
+                      const contact = j.apolloContact;
+                      const firstName = contact?.name?.split(' ')[0] ?? 'there';
+                      const emailBody = [
+                        'Subject: Candidate for your ' + (j.title ?? 'open role') + ' at ' + (j.postedCompany?.name ?? 'your company'),
+                        '',
+                        'Hi ' + firstName + ',',
+                        '',
+                        'I noticed ' + (j.postedCompany?.name ?? 'your company') + ' is hiring for ' + (j.title ?? 'this role') + '. I happen to know someone who could be a strong fit.',
+                        '',
+                        result.candidateName + ' brings ' + result.courseSkills.split(',').slice(0, 3).join(', ') + ' skills combined with solid domain experience. They are actively looking and available to start relatively soon.',
+                        '',
+                        'Is this role still open? If so, I would be happy to share the resume. No cost to you for accepting it.',
+                        '',
+                        'Best regards,',
+                        '[Your name]',
+                        'Lithan',
+                      ].join('\n');
+
+                      return (
+                        <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 12, padding: '1.1rem', marginBottom: '0.85rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>{j.title} — {j.postedCompany?.name}</div>
+                              {contact
+                                ? <div style={{ fontSize: '0.72rem', color: '#60a5fa', marginTop: 2 }}>To: {contact.name} ({contact.title}){contact.email ? ' · ' + contact.email : ' · email not found'}</div>
+                                : <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)', marginTop: 2 }}>No Apollo contact found — search manually</div>
+                              }
+                            </div>
+                            <button onClick={() => navigator.clipboard.writeText(emailBody)}
+                              style={{ padding: '0.35rem 0.7rem', borderRadius: 7, border: '1px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+                              Copy
+                            </button>
+                          </div>
+                          <pre style={{ margin: 0, fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>{emailBody}</pre>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
-            <button onClick={() => {
-              if (!pitch) return
-              navigator.clipboard.writeText('Subject: ' + pitch.subject + '\n\n' + pitch.lines.join('\n'))
-              setCopied(true); setTimeout(() => setCopied(false), 2000)
-            }} className="w-full mt-4 py-3 rounded-xl font-medium text-sm border transition-all"
-              style={{ background: copied ? '#EAF3DE' : '#f5f5f5', color: copied ? '#3B6D11' : '#444' }}>
-              {copied ? 'Copied!' : 'Copy Pitch to Clipboard'}
-            </button>
-            <button onClick={reset} className="w-full mt-2 py-3 rounded-xl font-medium text-sm text-white" style={{ background: '#185FA5' }}>
-              Analyse Another Candidate
-            </button>
           </div>
         )}
       </div>
+      <style>{`
+        input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); }
+        input:focus, textarea:focus, select:focus { border-color: rgba(96,165,250,0.5) !important; }
+        a:hover { opacity: 0.8; }
+      `}</style>
     </div>
-  )
+  );
 }
